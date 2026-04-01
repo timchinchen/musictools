@@ -1,0 +1,933 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MusicTools - Rock MP3 to Guitar Tab</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 20px clamp(12px, 2.5vw, 36px);
+        background: #101218;
+        color: #eceff4;
+      }
+      .container {
+        width: 100%;
+        max-width: min(1480px, calc(100vw - 24px));
+        margin: 0 auto;
+      }
+      .card {
+        background: #1a1f2b;
+        border: 1px solid #2a3244;
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      button {
+        background: #4f8cff;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 14px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
+      pre {
+        white-space: pre-wrap;
+        background: #0f1420;
+        border: 1px solid #293246;
+        border-radius: 8px;
+        padding: 12px;
+      }
+      .muted {
+        color: #9ea7b8;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .spacer {
+        margin-top: 10px;
+      }
+      .card--graphic-tab {
+        max-width: none;
+      }
+      .tab-svg {
+        width: 100%;
+        min-height: 280px;
+        background: #0f1420;
+        border: 1px solid #293246;
+        border-radius: 8px;
+        display: block;
+      }
+      .tiny {
+        font-size: 12px;
+        color: #9ea7b8;
+      }
+      .upload-history {
+        list-style: none;
+        margin: 8px 0 0 0;
+        padding: 0;
+        max-height: 240px;
+        overflow-y: auto;
+      }
+      .upload-history li {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        border: 1px solid #2a3244;
+        margin-bottom: 6px;
+        cursor: pointer;
+      }
+      .upload-history li:hover {
+        background: #252b3a;
+      }
+      .upload-history li.active {
+        border-color: #4f8cff;
+      }
+      .upload-history .name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+        flex: 1;
+      }
+      .upload-history .meta {
+        flex-shrink: 0;
+        font-size: 11px;
+        color: #9ea7b8;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Rock MP3 -> Guitar Tab (Starter)</h1>
+      <p class="muted">
+        Upload an MP3 and get initial chord/riff/tab suggestions.
+      </p>
+
+      <div class="card">
+        <input id="fileInput" type="file" accept=".mp3,audio/mpeg" />
+        <div class="row spacer" style="flex-wrap: wrap">
+          <label class="muted" for="riffPreset">Riff style</label>
+          <select id="riffPreset" style="padding: 8px; border-radius: 6px; background: #1a1f2b; color: #eceff4; border: 1px solid #2a3244">
+            <option value="low_string_rock">Low-string rock (E/A/D)</option>
+            <option value="mid_neck_rock" selected>Mid-neck rock</option>
+            <option value="lead_solo">Lead / solo</option>
+          </select>
+        </div>
+        <div class="row spacer" style="flex-wrap: wrap">
+          <label class="muted" for="audioPreprocess">Guitar isolation</label>
+          <select id="audioPreprocess" style="padding: 8px; border-radius: 6px; background: #1a1f2b; color: #eceff4; border: 1px solid #2a3244; max-width: 100%">
+            <option value="none" selected>Off (full mix)</option>
+            <option value="hpss_harmonic">Harmonic only (HPSS — less drums)</option>
+            <option value="guitar_focus">Guitar focus (HPSS + band-pass ~82 Hz–5.2 kHz)</option>
+          </select>
+        </div>
+        <p class="tiny" style="margin: 4px 0 0 0">
+          Isolation uses DSP, not AI stems: good for reducing kick/snare bleed; vocals/keys may remain if they overlap the guitar.
+        </p>
+        <div class="row spacer">
+          <button id="uploadBtn">Upload MP3</button>
+          <button id="analyzeBtn">Analyze MP3</button>
+        </div>
+        <p id="status" class="muted"></p>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top: 0">Recent uploads</h3>
+        <p class="tiny" style="margin: 0 0 8px 0">
+          Files already stored on the server. Click a row to use that file, then Analyze (no re-upload).
+        </p>
+        <div class="row">
+          <button type="button" id="refreshHistoryBtn">Refresh list</button>
+        </div>
+        <ul id="uploadHistoryList" class="upload-history"></ul>
+      </div>
+
+      <div class="card">
+        <h3>Result</h3>
+        <pre id="output">No analysis yet.</pre>
+      </div>
+
+      <div class="card card--graphic-tab">
+        <h3 style="margin-top: 0">Graphic Tab View</h3>
+        <div class="row spacer" style="flex-wrap: wrap; align-items: center">
+          <button id="tabPlayPauseBtn" type="button" disabled>Play</button>
+          <label class="muted" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer">
+            <input id="includeOriginalAudioCheckbox" type="checkbox" />
+            Include original audio
+          </label>
+        </div>
+        <div class="tiny" style="margin: 8px 0 0 0">
+          <span class="muted">Original playback source:</span>
+          <label style="margin-left: 8px; cursor: pointer">
+            <input type="radio" name="origPlayback" value="full" checked />
+            Full upload (local MP3)
+          </label>
+          <label style="margin-left: 12px; cursor: pointer">
+            <input type="radio" name="origPlayback" value="isolated" id="origPlaybackIsolated" disabled />
+            Isolated (server — same as analysis)
+          </label>
+        </div>
+        <p class="tiny" style="margin: 6px 0 0 0">
+          MIDI + playhead loop together. “Full upload” decodes your file in the browser. “Isolated” streams the same HPSS/band-pass used for tab detection (requires analysis with Guitar isolation on). Same time slice each loop.
+        </p>
+        <div id="tabMeta" class="tiny spacer">No tab render yet.</div>
+        <svg id="tabSvg" class="tab-svg" viewBox="0 0 1320 260" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <h3 style="margin: 0">Debug Panel</h3>
+          <label class="muted">
+            <input id="showDebugCheckbox" type="checkbox" />
+            Show debug details
+          </label>
+        </div>
+        <pre id="debugOutput" class="spacer">Debug hidden.</pre>
+      </div>
+    </div>
+
+    <script>
+      const TAB_VIEW_WIDTH = 1320;
+      const TAB_VIEW_HEIGHT = 260;
+      const API_BASE = "http://127.0.0.1:8000";
+      const fileInput = document.getElementById("fileInput");
+      const uploadBtn = document.getElementById("uploadBtn");
+      const analyzeBtn = document.getElementById("analyzeBtn");
+      const uploadHistoryListEl = document.getElementById("uploadHistoryList");
+      const refreshHistoryBtn = document.getElementById("refreshHistoryBtn");
+      const statusEl = document.getElementById("status");
+      const outputEl = document.getElementById("output");
+      const showDebugCheckbox = document.getElementById("showDebugCheckbox");
+      const debugOutputEl = document.getElementById("debugOutput");
+      const tabMetaEl = document.getElementById("tabMeta");
+      const tabSvgEl = document.getElementById("tabSvg");
+      const tabPlayPauseBtn = document.getElementById("tabPlayPauseBtn");
+      const includeOriginalAudioCheckbox = document.getElementById("includeOriginalAudioCheckbox");
+      let uploadedFileId = null;
+      let latestPayload = null;
+      let playheadTimer = null;
+      let analyzeAnimTimer = null;
+      let isTabPlaying = false;
+      let lastTabBounds = null;
+
+      const OPEN_STRING_MIDI = [64, 59, 55, 50, 45, 40];
+      let tabAudioCtx = null;
+      let tabMasterGain = null;
+      let tabMidiBus = null;
+      let tabOriginalBus = null;
+      let tabAudioGen = 0;
+      let tabAudioLoopTimer = null;
+      let cachedOriginalDecodeKey = "";
+      let cachedOriginalBuffer = null;
+      let cachedIsolatedKey = "";
+      let cachedIsolatedBuffer = null;
+
+      fileInput.addEventListener("change", () => {
+        cachedOriginalDecodeKey = "";
+        cachedOriginalBuffer = null;
+        cachedIsolatedKey = "";
+        cachedIsolatedBuffer = null;
+      });
+
+      function formatBytes(n) {
+        if (n == null || n < 0) return "";
+        if (n < 1024) return `${n} B`;
+        if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+        return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+      }
+
+      function formatHistoryDate(iso) {
+        if (!iso) return "";
+        try {
+          const d = new Date(iso);
+          if (Number.isNaN(d.getTime())) return iso;
+          return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+        } catch {
+          return iso;
+        }
+      }
+
+      function renderUploadHistoryList(items) {
+        if (!uploadHistoryListEl) return;
+        uploadHistoryListEl.innerHTML = "";
+        if (!items || !items.length) {
+          const li = document.createElement("li");
+          li.style.cursor = "default";
+          li.style.borderStyle = "dashed";
+          li.textContent = "No uploads recorded yet. Upload an MP3 or refresh after the server creates its database.";
+          uploadHistoryListEl.appendChild(li);
+          return;
+        }
+        for (const row of items) {
+          const li = document.createElement("li");
+          li.dataset.fileId = row.file_id;
+          if (row.file_id === uploadedFileId) li.classList.add("active");
+          const name = document.createElement("span");
+          name.className = "name";
+          name.textContent = row.filename || row.file_id;
+          name.title = row.filename || "";
+          const meta = document.createElement("span");
+          meta.className = "meta";
+          meta.textContent = [formatBytes(row.size_bytes), formatHistoryDate(row.created_at)].filter(Boolean).join(" · ");
+          li.appendChild(name);
+          li.appendChild(meta);
+          li.addEventListener("click", () => selectFromHistory(row.file_id, row.filename));
+          uploadHistoryListEl.appendChild(li);
+        }
+      }
+
+      async function loadUploadHistory() {
+        if (refreshHistoryBtn) refreshHistoryBtn.disabled = true;
+        try {
+          const response = await fetch(`${API_BASE}/api/uploads?limit=50`);
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.detail || "Failed to load history");
+          renderUploadHistoryList(data.uploads || []);
+        } catch {
+          if (!uploadHistoryListEl) return;
+          uploadHistoryListEl.innerHTML = "";
+          const li = document.createElement("li");
+          li.style.cursor = "default";
+          li.style.borderStyle = "dashed";
+          li.textContent =
+            "Could not load upload history. Start the API (e.g. uvicorn backend.app.main:app) or check API_BASE in this page.";
+          uploadHistoryListEl.appendChild(li);
+        } finally {
+          if (refreshHistoryBtn) refreshHistoryBtn.disabled = false;
+        }
+      }
+
+      function selectFromHistory(fileId, filename) {
+        uploadedFileId = fileId;
+        fileInput.value = "";
+        cachedOriginalDecodeKey = "";
+        cachedOriginalBuffer = null;
+        cachedIsolatedKey = "";
+        cachedIsolatedBuffer = null;
+        latestPayload = { file_id: fileId, audio_preprocess: "none" };
+        updateOriginalPlaybackSourceRadios();
+        clearTabGraphic("History selection. Click Analyze to render graphic tab.");
+        renderDebug(latestPayload);
+        const label = filename || fileId;
+        outputEl.textContent = `Using server file: ${label}\nFile ID: ${fileId}\n(No local MP3 — use Isolated playback after analysis with Guitar isolation, or upload again for full mix in browser.)`;
+        statusEl.textContent = "Selected from history. Click Analyze MP3.";
+        loadUploadHistory();
+      }
+
+      function updateOriginalPlaybackSourceRadios() {
+        const iso = document.getElementById("origPlaybackIsolated");
+        const pre = latestPayload?.audio_preprocess || "none";
+        const canIso = pre !== "none" && latestPayload?.file_id;
+        if (!iso) return;
+        iso.disabled = !canIso;
+        if (!canIso && iso.checked) {
+          const full = document.querySelector('input[name="origPlayback"][value="full"]');
+          if (full) full.checked = true;
+        }
+      }
+
+      async function ensureDecodedIsolatedWav() {
+        const fid = latestPayload?.file_id;
+        const pre = latestPayload?.audio_preprocess || "none";
+        if (!fid || pre === "none") return null;
+        const key = `${fid}:${pre}`;
+        if (cachedIsolatedKey === key && cachedIsolatedBuffer) {
+          return cachedIsolatedBuffer;
+        }
+        const ctx = getTabAudioContext();
+        const url = `${API_BASE}/api/isolated-audio?file_id=${encodeURIComponent(fid)}&audio_preprocess=${encodeURIComponent(pre)}`;
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const ab = await res.arrayBuffer();
+        try {
+          const buf = await ctx.decodeAudioData(ab.slice(0));
+          cachedIsolatedKey = key;
+          cachedIsolatedBuffer = buf;
+          return buf;
+        } catch {
+          return null;
+        }
+      }
+
+      function getTabAudioContext() {
+        if (!tabAudioCtx || tabAudioCtx.state === "closed") {
+          tabAudioCtx = new AudioContext();
+          tabMasterGain = tabAudioCtx.createGain();
+          tabMasterGain.gain.value = 0;
+          tabMidiBus = tabAudioCtx.createGain();
+          tabOriginalBus = tabAudioCtx.createGain();
+          tabMidiBus.gain.value = 2.4;
+          tabOriginalBus.gain.value = 0.42;
+          tabMidiBus.connect(tabMasterGain);
+          tabOriginalBus.connect(tabMasterGain);
+          tabMasterGain.connect(tabAudioCtx.destination);
+        } else if (tabMidiBus) {
+          tabMidiBus.gain.value = 2.4;
+        }
+        return tabAudioCtx;
+      }
+
+      async function ensureDecodedOriginalMp3() {
+        const file = fileInput.files?.[0];
+        if (!file || !String(file.name || "").toLowerCase().endsWith(".mp3")) {
+          return null;
+        }
+        const key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (cachedOriginalDecodeKey === key && cachedOriginalBuffer) {
+          return cachedOriginalBuffer;
+        }
+        const ctx = getTabAudioContext();
+        const ab = await file.arrayBuffer();
+        const copy = ab.slice(0);
+        try {
+          const buf = await ctx.decodeAudioData(copy);
+          cachedOriginalDecodeKey = key;
+          cachedOriginalBuffer = buf;
+          return buf;
+        } catch {
+          return null;
+        }
+      }
+
+      function midiToFreq(midi) {
+        return 440 * Math.pow(2, (midi - 69) / 12);
+      }
+
+      function playMidiPluck(ctx, dest, midi, when, durationSec) {
+        const freq = midiToFreq(midi);
+        const osc = ctx.createOscillator();
+        osc.type = "triangle";
+        const g = ctx.createGain();
+        const peak = 0.34;
+        g.gain.setValueAtTime(0.0008, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0008, when + Math.max(0.04, durationSec));
+        osc.frequency.setValueAtTime(freq, when);
+        osc.connect(g);
+        g.connect(dest);
+        osc.start(when);
+        osc.stop(when + Math.max(0.06, durationSec) + 0.04);
+      }
+
+      function stopTabAudio() {
+        tabAudioGen += 1;
+        if (tabAudioLoopTimer) {
+          clearTimeout(tabAudioLoopTimer);
+          tabAudioLoopTimer = null;
+        }
+        if (tabAudioCtx && tabMasterGain) {
+          const now = tabAudioCtx.currentTime;
+          try {
+            tabMasterGain.gain.cancelScheduledValues(now);
+          } catch (_) {
+            /* ignore */
+          }
+          tabMasterGain.gain.setValueAtTime(0, now);
+        }
+      }
+
+      function renderTab(result) {
+        const lines = [];
+        lines.push(`Tempo: ${result.tempo_bpm} BPM`);
+        lines.push(`Key: ${result.key}`);
+        if (result.riff_preset_label) {
+          lines.push(`Riff style: ${result.riff_preset_label}`);
+        }
+        if (result.audio_preprocess_label) {
+          lines.push(`Guitar isolation: ${result.audio_preprocess_label}`);
+        }
+        lines.push(`Chords: ${result.chords.join(" - ")}`);
+        lines.push("");
+        lines.push("Riff notes:");
+        lines.push(result.riff_notes.join(" "));
+        lines.push("");
+        lines.push("Tab suggestions (string/fret @ beat):");
+        for (const n of result.tab_suggestions) {
+          lines.push(`- ${n.note}: string ${n.string}, fret ${n.fret}, beat ${n.beat}`);
+        }
+        lines.push("");
+        lines.push(`Note: ${result.note}`);
+        return lines.join("\n");
+      }
+
+      function renderDebug(result) {
+        if (!showDebugCheckbox.checked) {
+          debugOutputEl.textContent = "Debug hidden.";
+          return;
+        }
+        const debug = result?.debug || {};
+        const confidence = result?.confidence || {};
+        const lines = [];
+
+        lines.push("=== Pipeline (not a black box) ===");
+        if (Array.isArray(debug.pipeline_steps)) {
+          for (const step of debug.pipeline_steps) {
+            lines.push(`  ${step}`);
+          }
+        } else {
+          lines.push("  (no pipeline_steps in response)");
+        }
+
+        lines.push("");
+        lines.push("=== Summary ===");
+        lines.push(`file_id: ${result?.file_id || "n/a"}`);
+        lines.push(`mode: ${debug.analysis_mode || "unknown"}`);
+        lines.push(`riff_preset: ${debug.riff_preset ?? result?.riff_preset ?? "n/a"}`);
+        lines.push(`audio_preprocess: ${debug.audio_preprocess?.applied ?? result?.audio_preprocess ?? "n/a"}`);
+        lines.push(`pitch_extraction: ${debug.pitch_extraction ?? "n/a"}`);
+        lines.push(`tab_mapper: ${debug.tab_mapper ?? "n/a"}`);
+        lines.push(`tempo_bpm: ${result?.tempo_bpm ?? "n/a"} | key: ${result?.key || "n/a"}`);
+        lines.push(
+          `counts: chords(unique)=${debug.chord_unique_count ?? "?"} | riff_midi=${debug.riff_candidate_count ?? "?"} | tab_notes=${debug.tab_note_count ?? "?"}`
+        );
+        lines.push(
+          `confidence: chords=${confidence.chords ?? "n/a"}, riff=${confidence.riff_notes ?? "n/a"}, tab=${confidence.tab_mapping ?? "n/a"}`
+        );
+        if (debug.error) lines.push(`error: ${debug.error}`);
+
+        if (debug.audio) {
+          lines.push("");
+          lines.push("=== Audio ===");
+          lines.push(JSON.stringify(debug.audio, null, 2));
+        }
+
+        if (debug.key_detail && Object.keys(debug.key_detail).length) {
+          lines.push("");
+          lines.push("=== Key (Krumhansl-Schmuckler) ===");
+          lines.push(JSON.stringify(debug.key_detail, null, 2));
+        }
+
+        if (debug.quantize && Object.keys(debug.quantize).length) {
+          lines.push("");
+          lines.push("=== 16th-note grid ===");
+          lines.push(JSON.stringify(debug.quantize, null, 2));
+        }
+
+        if (debug.merge_grid && Object.keys(debug.merge_grid).length) {
+          lines.push("");
+          lines.push("=== Merge same grid + same MIDI ===");
+          lines.push(JSON.stringify(debug.merge_grid, null, 2));
+        }
+
+        if (debug.pitch_extraction_detail && Object.keys(debug.pitch_extraction_detail).length) {
+          lines.push("");
+          lines.push("=== Pitch / onset extraction ===");
+          lines.push(JSON.stringify(debug.pitch_extraction_detail, null, 2));
+        }
+
+        if (debug.dp && Object.keys(debug.dp).length) {
+          lines.push("");
+          lines.push("=== DP tab mapper ===");
+          lines.push(JSON.stringify(debug.dp, null, 2));
+        }
+
+        if (Array.isArray(debug.chord_timeline_sample) && debug.chord_timeline_sample.length) {
+          lines.push("");
+          lines.push(`=== Chord per beat-slice (sample, ${debug.chord_beat_slices_total ?? "?"} slices total) ===`);
+          const sample = debug.chord_timeline_sample.slice(0, 16);
+          lines.push(sample.map((x) => `  [${x.beat_slice_index}] ${x.chord}`).join("\n"));
+        }
+
+        if (Array.isArray(debug.note_events_sample) && debug.note_events_sample.length) {
+          lines.push("");
+          lines.push("=== Note events → tab (first rows) ===");
+          lines.push("  i | time_s | midi | note | beat | str | fret");
+          for (const ev of debug.note_events_sample) {
+            lines.push(
+              `  ${ev.i} | ${ev.time_sec ?? "-"} | ${ev.midi ?? "-"} | ${ev.note} | ${ev.beat_grid ?? "-"} | ${ev.string} | ${ev.fret}`
+            );
+          }
+        }
+
+        lines.push("");
+        lines.push("=== Full JSON (API response) ===");
+        lines.push(JSON.stringify(result, null, 2));
+        debugOutputEl.textContent = lines.join("\n");
+      }
+
+      function pauseTabPlayback() {
+        stopPlayhead();
+        stopTabAudio();
+        isTabPlaying = false;
+        if (tabPlayPauseBtn) tabPlayPauseBtn.textContent = "Play";
+      }
+
+      function clearTabGraphic(message) {
+        pauseTabPlayback();
+        lastTabBounds = null;
+        if (tabPlayPauseBtn) {
+          tabPlayPauseBtn.disabled = true;
+          tabPlayPauseBtn.textContent = "Play";
+        }
+        stopAnalyzeAnimation();
+        tabMetaEl.textContent = message;
+        tabSvgEl.innerHTML = "";
+      }
+
+      function stopPlayhead() {
+        if (playheadTimer) {
+          clearInterval(playheadTimer);
+          playheadTimer = null;
+        }
+      }
+
+      /**
+       * Drive the scrub line from AudioContext.currentTime so it stays locked to
+       * scheduled MIDI and buffer playback (same anchor + loop length as armLoop).
+       */
+      function startPlayheadAudioSync(leftX, rightX, anchorCtxTime, loopDurSec) {
+        stopPlayhead();
+        const playhead = document.getElementById("playheadLine");
+        const loopDur = Math.max(0.001, loopDurSec);
+
+        playheadTimer = setInterval(() => {
+          if (!playhead) return;
+          const ctx = tabAudioCtx;
+          if (!ctx || ctx.state === "closed") return;
+          let phase = ctx.currentTime - anchorCtxTime;
+          phase -= Math.floor(phase / loopDur) * loopDur;
+          if (phase < 0) phase = 0;
+          const p = phase / loopDur;
+          const x = leftX + p * (rightX - leftX);
+          playhead.setAttribute("x1", String(x));
+          playhead.setAttribute("x2", String(x));
+        }, 16);
+      }
+
+      function scheduleOriginalAudioSlice(ctx, buffer, destGain, anchorTime, sliceSec) {
+        if (!buffer || !destGain) return;
+        const dur = Math.min(Math.max(0.02, sliceSec), buffer.duration);
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(destGain);
+        try {
+          src.start(anchorTime, 0, dur);
+        } catch (_) {
+          /* ignore */
+        }
+      }
+
+      async function playTabPlayback() {
+        if (!lastTabBounds) return;
+        const { left, right, beatMin, beatMax, tempoBpm, tabNotes } = lastTabBounds;
+        stopTabAudio();
+        const myGen = tabAudioGen;
+        isTabPlaying = true;
+        tabPlayPauseBtn.textContent = "Pause";
+
+        const wantOriginal = includeOriginalAudioCheckbox?.checked === true;
+        let originalBuffer = null;
+        if (wantOriginal) {
+          const useIsolated = document.querySelector('input[name="origPlayback"]:checked')?.value === "isolated";
+          if (useIsolated) {
+            originalBuffer = await ensureDecodedIsolatedWav();
+            if (!originalBuffer) {
+              statusEl.textContent =
+                "Isolated audio failed to load (re-analyze with Guitar isolation, or use Full upload). MIDI only.";
+            }
+          } else {
+            originalBuffer = await ensureDecodedOriginalMp3();
+            if (!originalBuffer) {
+              statusEl.textContent =
+                "Original audio skipped (no MP3 in the file field, or decode failed). MIDI playback only.";
+            }
+          }
+        }
+
+        const bpm = Number(tempoBpm) > 0 ? Number(tempoBpm) : 120;
+        const secPerBeat = 60 / bpm;
+        const beatSpan = Math.max(1, beatMax - beatMin);
+        const loopDurSec = beatSpan * secPerBeat;
+        const notes = Array.isArray(tabNotes) ? [...tabNotes] : [];
+        notes.sort((a, b) => (Number(a.beat) || 0) - (Number(b.beat) || 0));
+
+        const ctx = getTabAudioContext();
+        const AUDIO_ALIGN_SEC = 0.06;
+        ctx.resume().then(() => {
+          if (myGen !== tabAudioGen || !isTabPlaying) return;
+          const t0 = ctx.currentTime;
+          try {
+            tabMasterGain.gain.cancelScheduledValues(t0);
+          } catch (_) {
+            /* ignore */
+          }
+          tabMasterGain.gain.setValueAtTime(0.3, t0);
+
+          function schedulePass(anchorTime) {
+            if (myGen !== tabAudioGen || !isTabPlaying) return;
+            for (let i = 0; i < notes.length; i += 1) {
+              const n = notes[i];
+              const s = Number(n.string);
+              const f = Number(n.fret);
+              if (Number.isNaN(s) || s < 1 || s > 6 || Number.isNaN(f)) continue;
+              const midi = OPEN_STRING_MIDI[s - 1] + f;
+              const b = Number(n.beat) || 1;
+              const tNote = anchorTime + (b - beatMin) * secPerBeat;
+              const nextB = i + 1 < notes.length ? Number(notes[i + 1].beat) || beatMax : beatMax + 0.25;
+              const gapBeats = Math.max(0.25, nextB - b);
+              const dur = Math.min(0.24, Math.max(0.07, gapBeats * secPerBeat * 0.88));
+              playMidiPluck(ctx, tabMidiBus, midi, tNote, dur);
+            }
+          }
+
+          function armLoop(anchorTime) {
+            if (myGen !== tabAudioGen || !isTabPlaying) return;
+            schedulePass(anchorTime);
+            if (wantOriginal && originalBuffer && tabOriginalBus) {
+              scheduleOriginalAudioSlice(ctx, originalBuffer, tabOriginalBus, anchorTime, loopDurSec);
+            }
+            const nextAnchor = anchorTime + loopDurSec;
+            const msUntil = Math.max(15, (nextAnchor - ctx.currentTime) * 1000);
+            tabAudioLoopTimer = setTimeout(() => {
+              if (myGen !== tabAudioGen || !isTabPlaying) return;
+              armLoop(nextAnchor);
+            }, msUntil);
+          }
+
+          const anchorStart = t0 + AUDIO_ALIGN_SEC;
+          startPlayheadAudioSync(left, right, anchorStart, loopDurSec);
+          armLoop(anchorStart);
+        });
+      }
+
+      tabPlayPauseBtn.addEventListener("click", () => {
+        if (tabPlayPauseBtn.disabled || !lastTabBounds) return;
+        if (isTabPlaying) {
+          pauseTabPlayback();
+        } else {
+          void playTabPlayback();
+        }
+      });
+
+      function stopAnalyzeAnimation() {
+        if (analyzeAnimTimer) {
+          clearInterval(analyzeAnimTimer);
+          analyzeAnimTimer = null;
+        }
+      }
+
+      function startAnalyzeAnimation() {
+        stopPlayhead();
+        stopAnalyzeAnimation();
+        const width = TAB_VIEW_WIDTH;
+        const height = TAB_VIEW_HEIGHT;
+        const left = 72;
+        const right = width - 28;
+        const top = 54;
+        const rowGap = 28;
+        let phase = 0;
+
+        analyzeAnimTimer = setInterval(() => {
+          phase += 1;
+          const shimmerX = left + ((phase % 80) / 80) * (right - left);
+          const parts = [];
+          parts.push(`<rect x="0" y="0" width="${width}" height="${height}" fill="#0f1420"/>`);
+          parts.push(`<text x="${left}" y="20" fill="#dfe7ff" font-size="14" font-weight="bold">Analyzing audio...</text>`);
+          parts.push(`<text x="${left}" y="36" fill="#9ea7b8" font-size="12">Detecting tempo, key, chords, and riff notes</text>`);
+          for (let i = 0; i < 6; i += 1) {
+            const y = top + i * rowGap;
+            parts.push(`<line x1="${left}" y1="${y}" x2="${right}" y2="${y}" stroke="#3d455d" stroke-width="1.5"/>`);
+          }
+          parts.push(`<rect x="${shimmerX - 24}" y="${top - 14}" width="48" height="${rowGap * 6}" fill="#4f8cff22"/>`);
+          parts.push(`<line x1="${shimmerX}" y1="${top - 14}" x2="${shimmerX}" y2="${top + rowGap * 5 + 14}" stroke="#6fa1ff" stroke-width="2"/>`);
+          tabSvgEl.setAttribute("viewBox", `0 0 ${width} ${height}`);
+          tabSvgEl.innerHTML = parts.join("");
+        }, 40);
+      }
+
+      function renderGraphicTab(result) {
+        stopAnalyzeAnimation();
+        pauseTabPlayback();
+        const notes = Array.isArray(result?.tab_suggestions) ? result.tab_suggestions : [];
+        if (!notes.length) {
+          clearTabGraphic("No tab notes detected for graphic rendering.");
+          return;
+        }
+
+        const width = TAB_VIEW_WIDTH;
+        const height = TAB_VIEW_HEIGHT;
+        const left = 72;
+        const right = width - 28;
+        const top = 54;
+        const rowGap = 28;
+        const sectionMid = Math.ceil(notes.length / 2);
+
+        const stringLabels = ["e", "B", "G", "D", "A", "E"];
+        const beatMin = Math.min(...notes.map((n) => n.beat ?? 1));
+        const beatMax = Math.max(...notes.map((n) => n.beat ?? 1));
+        const beatSpan = Math.max(1, beatMax - beatMin);
+
+        const parts = [];
+        parts.push(`<rect x="0" y="0" width="${width}" height="${height}" fill="#0f1420"/>`);
+        parts.push(`<text x="${left}" y="20" fill="#dfe7ff" font-size="14" font-weight="bold">Rock Tab - ${result.key || "Unknown key"} - ${result.tempo_bpm || "?"} BPM</text>`);
+        parts.push(`<text x="${left}" y="36" fill="#9ea7b8" font-size="12">Intro / Solo (left) -> Riff (right)</text>`);
+
+        const startBeat = Math.floor(beatMin);
+        const endBeat = Math.ceil(beatMax);
+        for (let beat = startBeat; beat <= endBeat; beat += 1) {
+          const x = left + ((beat - beatMin) / beatSpan) * (right - left);
+          const isMeasure = beat % 4 === 0;
+          parts.push(
+            `<line x1="${x}" y1="${top - 12}" x2="${x}" y2="${top + 5 * rowGap + 8}" stroke="${isMeasure ? "#5a6a93" : "#33405f"}" stroke-width="${isMeasure ? 1.5 : 1}" stroke-dasharray="${isMeasure ? "none" : "3 4"}"/>`
+          );
+          if (isMeasure) {
+            parts.push(`<text x="${x + 2}" y="${top - 16}" fill="#8ea6da" font-size="10">|${Math.floor(beat / 4) + 1}</text>`);
+          }
+        }
+
+        for (let i = 0; i < 6; i += 1) {
+          const y = top + i * rowGap;
+          parts.push(`<line x1="${left}" y1="${y}" x2="${right}" y2="${y}" stroke="#495169" stroke-width="1.5"/>`);
+          parts.push(`<text x="20" y="${y + 4}" fill="#c7d2ee" font-size="13">${stringLabels[i]}|</text>`);
+        }
+
+        const splitX = left + ((right - left) * (sectionMid - 0.5)) / Math.max(1, notes.length - 1);
+        parts.push(`<line x1="${splitX}" y1="${top - 18}" x2="${splitX}" y2="${top + 5 * rowGap + 8}" stroke="#2f3f66" stroke-dasharray="4 4"/>`);
+        parts.push(`<text x="${left}" y="${top + 5 * rowGap + 24}" fill="#8ab4ff" font-size="12">Intro/Solo</text>`);
+        parts.push(`<text x="${splitX + 10}" y="${top + 5 * rowGap + 24}" fill="#8ab4ff" font-size="12">Riff</text>`);
+
+        notes.forEach((n) => {
+          const stringNum = Number(n.string);
+          const fret = String(n.fret ?? "?");
+          const beat = Number(n.beat ?? 1);
+          if (Number.isNaN(stringNum) || stringNum < 1 || stringNum > 6) return;
+
+          const x = left + ((beat - beatMin) / beatSpan) * (right - left);
+          const y = top + (stringNum - 1) * rowGap;
+          parts.push(`<circle cx="${x}" cy="${y}" r="12" fill="#4f8cff" opacity="0.95"/>`);
+          parts.push(`<text x="${x}" y="${y + 4}" text-anchor="middle" fill="white" font-size="12" font-weight="bold">${fret}</text>`);
+        });
+
+        parts.push(`<line id="playheadLine" x1="${left}" y1="${top - 14}" x2="${left}" y2="${top + 5 * rowGap + 10}" stroke="#ffd166" stroke-width="2"/>`);
+        tabSvgEl.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        tabSvgEl.innerHTML = parts.join("");
+        tabMetaEl.textContent = `Rendered ${notes.length} tab notes. Key: ${result.key || "n/a"} | Tempo: ${result.tempo_bpm || "n/a"} BPM`;
+        lastTabBounds = {
+          left,
+          right,
+          beatMin,
+          beatMax,
+          tempoBpm: result?.tempo_bpm,
+          tabNotes: notes.map((n) => ({ ...n })),
+        };
+        tabPlayPauseBtn.disabled = false;
+        tabPlayPauseBtn.textContent = "Play";
+      }
+
+      showDebugCheckbox.addEventListener("change", () => {
+        renderDebug(latestPayload);
+      });
+
+      async function uploadFile() {
+        const file = fileInput.files?.[0];
+        if (!file) {
+          statusEl.textContent = "Please choose an MP3 file first.";
+          return null;
+        }
+
+        uploadBtn.disabled = true;
+        analyzeBtn.disabled = true;
+        statusEl.textContent = "Uploading...";
+        outputEl.textContent = "Working...";
+
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+
+          const response = await fetch(`${API_BASE}/api/upload`, {
+            method: "POST",
+            body: formData,
+          });
+
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.detail || "Upload request failed.");
+          }
+
+          uploadedFileId = data.file_id;
+          outputEl.textContent = `Uploaded ${data.filename}\nFile ID: ${data.file_id}\nSize: ${data.size_bytes} bytes`;
+          latestPayload = data;
+          cachedIsolatedKey = "";
+          cachedIsolatedBuffer = null;
+          updateOriginalPlaybackSourceRadios();
+          clearTabGraphic("Upload complete. Analyze to render graphic tab.");
+          renderDebug(data);
+          statusEl.textContent = "Upload complete. Click Analyze MP3 next.";
+          loadUploadHistory();
+          return uploadedFileId;
+        } catch (err) {
+          outputEl.textContent = String(err);
+          statusEl.textContent = "Failed to upload file.";
+          return null;
+        } finally {
+          uploadBtn.disabled = false;
+          analyzeBtn.disabled = false;
+        }
+      }
+
+      if (refreshHistoryBtn) {
+        refreshHistoryBtn.addEventListener("click", () => loadUploadHistory());
+      }
+
+      uploadBtn.addEventListener("click", async () => {
+        await uploadFile();
+      });
+
+      analyzeBtn.addEventListener("click", async () => {
+        if (!uploadedFileId) {
+          statusEl.textContent = "Upload first, then analyze.";
+          return;
+        }
+
+        analyzeBtn.disabled = true;
+        uploadBtn.disabled = true;
+        statusEl.textContent = "Analyzing uploaded MP3...";
+        outputEl.textContent = "Working...";
+        tabMetaEl.textContent = "Analyzing audio signal...";
+        startAnalyzeAnimation();
+
+        try {
+          const preset = document.getElementById("riffPreset").value;
+          const preprocess = document.getElementById("audioPreprocess").value;
+          const response = await fetch(
+            `${API_BASE}/api/analyze?file_id=${encodeURIComponent(uploadedFileId)}&riff_preset=${encodeURIComponent(preset)}&audio_preprocess=${encodeURIComponent(preprocess)}`,
+            { method: "POST" }
+          );
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.detail || "Analyze request failed.");
+          }
+          latestPayload = data;
+          cachedIsolatedKey = "";
+          cachedIsolatedBuffer = null;
+          updateOriginalPlaybackSourceRadios();
+          outputEl.textContent = renderTab(data);
+          renderGraphicTab(data);
+          renderDebug(data);
+          statusEl.textContent = "Analysis complete.";
+        } catch (err) {
+          outputEl.textContent = String(err);
+          statusEl.textContent = "Failed to analyze uploaded file.";
+          clearTabGraphic("Analysis failed. Try a different MP3 or check debug details.");
+        } finally {
+          stopAnalyzeAnimation();
+          analyzeBtn.disabled = false;
+          uploadBtn.disabled = false;
+        }
+      });
+
+      loadUploadHistory();
+    </script>
+  </body>
+</html>
